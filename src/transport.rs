@@ -1,15 +1,17 @@
-use actix::{Actor, ActorContext, Addr, Handler, Message, StreamHandler};
+use actix::{Actor, ActorContext, AsyncContext, Addr, Handler, Message, StreamHandler};
 use actix_web::{error::PayloadError, web::Bytes, HttpRequest, HttpResponse};
 use actix_web_actors::ws::{
 	CloseCode, Message as WsMessage, ProtocolError, WebsocketContext, WsResponseBuilder,
 };
-use buttplug::connector::{transport::ButtplugConnectorTransport, ButtplugConnectorError};
+use buttplug::{connector::{transport::{ButtplugConnectorTransport, ButtplugTransportIncomingMessage}, ButtplugConnectorError}, core::messages::serializer::ButtplugSerializedMessage};
 use futures::{future::BoxFuture, Stream};
 use tokio::sync::mpsc::{Receiver, Sender};
 
+use log::{error, trace};
+
 /// A transport connector similar to [buttplug::ButtplugWebsocketClientTransport]
 pub struct ButtplugActixWebsocketTransport {
-	inner_addr: Addr<InnerWsTransporterActor>,
+	inner_addr:Addr<InnerWsTransporterActor>,
 }
 
 impl ButtplugActixWebsocketTransport {
@@ -20,7 +22,7 @@ impl ButtplugActixWebsocketTransport {
 	where
 		S: Stream<Item = Result<Bytes, PayloadError>> + 'static,
 	{
-		let inner = InnerWsTransporterActor {};
+		let inner = InnerWsTransporterActor { in_tx: None};
 		let (inner_addr, res) = WsResponseBuilder::new(inner, req, stream).start_with_addr()?;
 
 		Ok((Self { inner_addr }, res))
@@ -30,12 +32,20 @@ impl ButtplugActixWebsocketTransport {
 impl ButtplugConnectorTransport for ButtplugActixWebsocketTransport {
 	fn connect(
 		&self,
-		outgoing_receiver: Receiver<
-			buttplug::core::messages::serializer::ButtplugSerializedMessage,
-		>,
-		incoming_sender: Sender<buttplug::connector::transport::ButtplugTransportIncomingMessage>,
-	) -> BoxFuture<'static, Result<(), buttplug::connector::ButtplugConnectorError>> {
-		todo!()
+		mut outgoing_receiver: Receiver<ButtplugSerializedMessage>,
+		incoming_sender: Sender<ButtplugTransportIncomingMessage>,
+	) -> BoxFuture<'static, Result<(), ButtplugConnectorError>> {
+		self.inner_addr.do_send(SendTx(incoming_sender));
+		let inner_addr = self.inner_addr.clone();
+		Box::pin(async move {
+			loop {
+				if let Some(out_msg) = outgoing_receiver.recv().await {
+					inner_addr.send(SendOut(out_msg)).await.expect("Failed to send outgoing message");
+				} else {
+					inner_addr.send(Disconnect).await.expect("Failed to send disconnect message");
+				}
+			}
+		})
 	}
 
 	fn disconnect(self) -> buttplug::connector::ButtplugConnectorResultFuture {
@@ -50,34 +60,90 @@ impl ButtplugConnectorTransport for ButtplugActixWebsocketTransport {
 
 /// The inner implementation of the transport.
 /// This is the actor that handles the websocket connection.
-struct InnerWsTransporterActor {}
+struct InnerWsTransporterActor {
+	in_tx:Option<Sender<ButtplugTransportIncomingMessage>>,
+}
 
 impl Actor for InnerWsTransporterActor {
 	type Context = WebsocketContext<Self>;
 }
 
 impl StreamHandler<Result<WsMessage, ProtocolError>> for InnerWsTransporterActor {
-	fn handle(&mut self, msg: WsMsg, ctx: &mut Self::Context) {
-		match msg {
-			WsMsg::Text(text) => {
-				println!("Got text: {}", text);
+	fn handle(&mut self, incoming: Result<WsMessage, ProtocolError>, ctx: &mut Self::Context) {
+		// always handle pings.
+		if let Ok(WsMessage::Ping(bin)) = &incoming {
+			trace!("Got ping: {:?}", bin);
+			ctx.pong(bin);
+			return;
+		}
+
+		if let Err(e) = incoming {
+			error!("Got error: {:?}", e);
+			ctx.stop();
+			return;
+		}
+
+		if let Some(in_tx) = &self.in_tx {
+			match incoming {
+				Ok(WsMessage::Text(text)) => {
+					trace!("Received text: {}", text);
+					let msg = ButtplugSerializedMessage::Text(text.to_string());
+					let future = async {
+						in_tx.send(ButtplugTransportIncomingMessage::Message(msg))
+						.await
+						.expect("Failed to send incoming message");
+					};
+					tokio_scoped::scope(|scope| {
+						scope.spawn(future);
+					});
+				},
+				Ok(WsMessage::Binary(bin)) => {
+					trace!("Received binary data: {:?}", bin);
+					let msg = ButtplugSerializedMessage::Binary(bin.to_vec());
+					let fut = async {
+						in_tx.send(ButtplugTransportIncomingMessage::Message(msg))
+						.await
+						.expect("Failed to send incoming message");
+					};
+					tokio_scoped::scope(|scope| {
+						scope.spawn(fut);
+					});
+				}
+				_ => (),
 			}
-			WsMsg::Binary(bin) => {
-				println!("Got binary: {:?}", bin);
+		}
+	}
+}
+
+#[derive(Message)]
+#[rtype(result = "()")]
+#[rtype(result = "()")]
+struct SendTx(Sender<ButtplugTransportIncomingMessage>);
+
+impl Handler<SendTx> for InnerWsTransporterActor {
+	type Result = ();
+
+	fn handle(&mut self, msg: SendTx, _ctx: &mut Self::Context) -> Self::Result {
+		self.in_tx = Some(msg.0);
+	}
+}
+
+#[derive(Message)]
+#[rtype(result = "()")]
+struct SendOut(ButtplugSerializedMessage);
+
+impl Handler<SendOut> for InnerWsTransporterActor {
+	type Result = ();
+
+	fn handle(&mut self, msg: SendOut, ctx: &mut Self::Context) -> Self::Result {
+		match msg.0 {
+			ButtplugSerializedMessage::Text(text) => {
+				trace!("Sending text: {}", text);
+				ctx.text(text);
 			}
-			WsMsg::Ping(bin) => {
-				println!("Got ping: {:?}", bin);
-				ctx.pong(&bin);
-			}
-			WsMsg::Pong(bin) => {
-				println!("Got pong: {:?}", bin);
-			}
-			WsMsg::Close(close) => {
-				println!("Got close: {:?}", close);
-				ctx.stop();
-			}
-			_ => {
-				println!("Got other message");
+			ButtplugSerializedMessage::Binary(bin) => {
+				trace!("Sending binary data: {:?}", bin);
+				ctx.binary(bin);
 			}
 		}
 	}
