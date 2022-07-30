@@ -3,6 +3,9 @@ mod error;
 #[cfg(feature = "actix-ws-transport")]
 pub mod transport;
 
+use std::sync::Arc;
+
+use delegate::delegate;
 use error::Result;
 
 use actix::{
@@ -10,7 +13,7 @@ use actix::{
 	Actor, ActorContext, ActorState, Addr, AsyncContext, StreamHandler,
 };
 use buttplug::{
-	client::{ButtplugClient, ButtplugClientEvent},
+	client::{ButtplugClient, ButtplugClientDevice, ButtplugClientError, ButtplugClientEvent},
 	connector::ButtplugConnector,
 	core::messages::{ButtplugCurrentSpecClientMessage, ButtplugCurrentSpecServerMessage},
 };
@@ -33,16 +36,12 @@ impl<A> ActorContext for ButtplugContext<A>
 where
 	A: Actor<Context = Self>,
 {
-	fn stop(&mut self) {
-		self.inner.stop()
-	}
-
-	fn terminate(&mut self) {
-		self.inner.terminate()
-	}
-
-	fn state(&self) -> actix::ActorState {
-		self.inner.state()
+	delegate! {
+		to self.inner {
+			fn stop(&mut self);
+			fn terminate(&mut self);
+			fn state(&self) -> ActorState;
+		}
 	}
 }
 
@@ -50,32 +49,22 @@ impl<A> AsyncContext<A> for ButtplugContext<A>
 where
 	A: Actor<Context = Self>,
 {
-	fn address(&self) -> actix::Addr<A> {
-		self.inner.address()
+	delegate! {
+		to self.inner {
+			fn address(&self) -> Addr<A>;
+			fn spawn<F>(&mut self, fut: F) -> actix::SpawnHandle
+			where
+				F: actix::ActorFuture<A, Output = ()> + 'static;
+			fn wait<F>(&mut self, fut: F)
+			where
+				F: actix::ActorFuture<A, Output = ()> + 'static;
+			fn cancel_future(&mut self, handle: actix::SpawnHandle) -> bool;
+		}
 	}
-
-	fn spawn<F>(&mut self, fut: F) -> actix::SpawnHandle
-	where
-		F: actix::ActorFuture<A, Output = ()> + 'static,
-	{
-		self.inner.spawn(fut)
-	}
-
-	fn wait<F>(&mut self, fut: F)
-	where
-		F: actix::ActorFuture<A, Output = ()> + 'static,
-	{
-		self.inner.wait(fut)
-	}
-
 	fn waiting(&self) -> bool {
 		self.inner.waiting()
 			|| self.inner.state() == ActorState::Stopping
 			|| self.inner.state() == ActorState::Stopped
-	}
-
-	fn cancel_future(&mut self, handle: actix::SpawnHandle) -> bool {
-		self.inner.cancel_future(handle)
 	}
 }
 
@@ -91,7 +80,7 @@ where
 use actix_web::error::PayloadError;
 use actix_web::web::Bytes;
 use actix_web::HttpResponse;
-use futures::Stream;
+use futures::{future::BoxFuture, Stream};
 
 impl<A> ButtplugContext<A>
 where
@@ -140,5 +129,20 @@ where
 		let addr = Self::start_with_connector(actor, name, conn).await?;
 
 		Ok((addr, res))
+	}
+}
+
+impl<A> ButtplugContext<A>
+where
+	A: Actor<Context = Self>,
+{
+	delegate! {
+		to self.client {
+			pub fn devices(&self) -> Vec<Arc<ButtplugClientDevice>>;
+			pub fn server_name(&self) -> Option<String>;
+			pub fn start_scanning(&self) -> BoxFuture<'static, Result<(), ButtplugClientError>>;
+			pub fn stop_scanning(&self) -> BoxFuture<'static, Result<(), ButtplugClientError>>;
+			pub fn ping(&self) -> BoxFuture<'static, Result<(), ButtplugClientError>>;
+		}
 	}
 }
