@@ -1,5 +1,13 @@
-mod error;
+#![doc = include_str!("../README.md")]
+#![warn(missing_docs)]
 
+/// Crate errors.
+pub mod error;
+
+/// Connector transport for actix web server websockets.
+///
+/// This module has a specialized implementation for `ButtplugConnectorTransport`
+/// that can be used with actix web websockets.
 #[cfg(feature = "actix-ws-transport")]
 pub mod transport;
 
@@ -87,6 +95,7 @@ where
 	A: Actor<Context = Self>,
 	A: StreamHandler<ButtplugClientEvent>,
 {
+	/// Start a new actor that uses the ButtplugContext with a given connector.
 	pub async fn start_with_connector<Con>(act: A, name: &str, connector: Con) -> Result<Addr<A>>
 	where
 		Con: ButtplugConnector<ButtplugCurrentSpecClientMessage, ButtplugCurrentSpecServerMessage>
@@ -105,7 +114,24 @@ where
 		Ok(addr)
 	}
 
-	/// Start a buttplug actor using the actix websocket transport.
+	/// Start a buttplug actor using [ButtplugActixWebsocketTransport] as the transport.
+	///
+	/// # Example
+	/// ```rust,no_run
+	/// async fn endpoint(
+	///     req: HttpRequest,
+	///     stream: web::Payload,
+	/// ) -> Result<HttpResponse, Error> {
+	///     let (addr, res) = ButtplugContext::start_with_actix_ws_transport(
+	///         MyOwnActor::default(),
+	///         "My Buttplug Actor",
+	///         req,
+	///         stream,
+	///     ).await?;
+	///
+	///     res
+	/// }
+	/// ```
 	#[cfg(feature = "actix-ws-transport")]
 	pub async fn start_with_actix_ws_transport<S>(
 		actor: A,
@@ -138,10 +164,19 @@ where
 {
 	delegate! {
 		to self.client {
+			/// Return a list of currently connected devices.
+			/// This call delegates to [ButtplugClient::devices].
 			pub fn devices(&self) -> Vec<Arc<ButtplugClientDevice>>;
+			/// Returns the name of the server.
+			/// This call delegates to [ButtplugClient::server_name].
 			pub fn server_name(&self) -> Option<String>;
+			/// Starts scanning for devices.
+			/// This call delegates to [ButtplugClient::start_scanning].
 			pub fn start_scanning(&self) -> BoxFuture<'static, Result<(), ButtplugClientError>>;
+			/// Stops scanning for devices.
+			/// This call delegates to [ButtplugClient::stop_scanning].
 			pub fn stop_scanning(&self) -> BoxFuture<'static, Result<(), ButtplugClientError>>;
+			/// This call delegates to [ButtplugClient::ping].
 			pub fn ping(&self) -> BoxFuture<'static, Result<(), ButtplugClientError>>;
 		}
 	}

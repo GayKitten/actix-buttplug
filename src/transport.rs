@@ -21,6 +21,8 @@ pub struct ButtplugActixWebsocketTransport {
 }
 
 impl ButtplugActixWebsocketTransport {
+	/// Create a new ButtplugActixWebsocketTransport from a reques.
+	/// You most likely want to use [start_with_actix_ws_transport][crate::ButtplugContext::start_with_actix_ws_transport] instead.
 	pub fn new<S>(
 		req: &HttpRequest,
 		stream: S,
