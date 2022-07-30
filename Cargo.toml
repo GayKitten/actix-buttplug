@@ -1,0 +1,22 @@
+[package]
+name = "actix-buttplug"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+default = ["actix-ws-transport"]
+actix-ws-transport = ["dep:actix-web-actors", "dep:actix-web", "dep:tokio"]
+
+[dependencies]
+actix = "0.13.0"
+buttplug = "5.1.10"
+futures = "0.3.21"
+log = "0.4.17"
+
+# dependencies for the actix transport (actix-ws-transport)
+actix-web-actors = { version = "4.1.0", optional = true }
+actix-web = { version = "4.1.0", optional = true }
+# use same version as buttplug
+tokio = { version = "1.17.0", optional = true }
