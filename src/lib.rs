@@ -2,15 +2,17 @@
 mod transport;
 
 use actix::{
-	dev::{AsyncContextParts, ContextParts},
-	Actor, ActorContext, ActorState, Addr, AsyncContext,
+	dev::{AsyncContextParts, ContextFut, ContextParts, Mailbox},
+	Actor, ActorContext, ActorState, Addr, AsyncContext, StreamHandler,
 };
 use buttplug::{
-	client::ButtplugClient, connector::ButtplugConnector, core::messages::ButtplugMessage,
+	client::ButtplugClient,
+	connector::ButtplugConnector,
+	core::messages::{ButtplugCurrentSpecClientMessage, ButtplugCurrentSpecServerMessage},
 };
 
 /// Execution context for buttplug.io actors.
-struct ButtplugContext<A>
+pub struct ButtplugContext<A>
 where
 	A: Actor<Context = Self>,
 {
@@ -85,20 +87,23 @@ use futures::Stream;
 impl<A> ButtplugContext<A>
 where
 	A: Actor<Context = Self>,
+	A: StreamHandler<()>,
 {
-	pub fn start_with_connector<I, O>(
-		actor: A,
-		name: &str,
-		conn: impl ButtplugConnector<I, O>,
-	) -> Addr<A>
+	pub fn start_with_connector<Con>(act: A, name: &str, connector: Con) -> Addr<A>
 	where
-		A: Actor<Context = ButtplugContext<A>>,
-		I: ButtplugMessage + 'static,
-		O: ButtplugMessage + 'static,
+		Con: ButtplugConnector<ButtplugCurrentSpecClientMessage, ButtplugCurrentSpecServerMessage>
+			+ 'static,
 	{
+		let mailbox = Mailbox::default();
+		let addr = mailbox.sender_producer();
 		let client = ButtplugClient::new(name);
-		// TODO: Finish this
-		todo!()
+		client.connect(connector);
+		let inner = ContextParts::new(addr);
+		let ctx = ButtplugContext { inner, client };
+		let fut = ContextFut::new(ctx, act, mailbox);
+		let addr = fut.address();
+		actix_rt::spawn(fut);
+		addr
 	}
 
 	/// Start a buttplug actor using the actix websocket transport.
