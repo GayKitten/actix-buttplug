@@ -1,4 +1,4 @@
-use actix::{Actor, ActorContext, Addr, AsyncContext, Handler, Message, StreamHandler};
+use actix::{Actor, ActorContext, Addr, Handler, Message, StreamHandler};
 use actix_web::{error::PayloadError, web::Bytes, HttpRequest, HttpResponse};
 use actix_web_actors::ws::{
 	CloseCode, Message as WsMessage, ProtocolError, WebsocketContext, WsResponseBuilder,
@@ -149,8 +149,8 @@ struct SendOut(ButtplugSerializedMessage);
 impl Handler<SendOut> for InnerWsTransporterActor {
 	type Result = ();
 
-	fn handle(&mut self, msg: SendOut, ctx: &mut Self::Context) -> Self::Result {
-		match msg.0 {
+	fn handle(&mut self, SendOut(msg): SendOut, ctx: &mut Self::Context) -> Self::Result {
+		match msg {
 			ButtplugSerializedMessage::Text(text) => {
 				trace!("Sending text: {}", text);
 				ctx.text(text);

@@ -1,15 +1,24 @@
+mod error;
+
 #[cfg(feature = "actix-ws-transport")]
-mod transport;
+pub mod transport;
+
+use error::Result;
 
 use actix::{
 	dev::{AsyncContextParts, ContextFut, ContextParts, Mailbox},
 	Actor, ActorContext, ActorState, Addr, AsyncContext, StreamHandler,
 };
 use buttplug::{
-	client::ButtplugClient,
+	client::{ButtplugClient, ButtplugClientEvent},
 	connector::ButtplugConnector,
 	core::messages::{ButtplugCurrentSpecClientMessage, ButtplugCurrentSpecServerMessage},
 };
+
+use buttplug::{
+	connector::ButtplugRemoteConnector, core::messages::serializer::ButtplugClientJSONSerializer,
+};
+use transport::ButtplugActixWebsocketTransport;
 
 /// Execution context for buttplug.io actors.
 pub struct ButtplugContext<A>
@@ -87,9 +96,9 @@ use futures::Stream;
 impl<A> ButtplugContext<A>
 where
 	A: Actor<Context = Self>,
-	A: StreamHandler<()>,
+	A: StreamHandler<ButtplugClientEvent>,
 {
-	pub fn start_with_connector<Con>(act: A, name: &str, connector: Con) -> Addr<A>
+	pub async fn start_with_connector<Con>(act: A, name: &str, connector: Con) -> Result<Addr<A>>
 	where
 		Con: ButtplugConnector<ButtplugCurrentSpecClientMessage, ButtplugCurrentSpecServerMessage>
 			+ 'static,
@@ -97,33 +106,28 @@ where
 		let mailbox = Mailbox::default();
 		let addr = mailbox.sender_producer();
 		let client = ButtplugClient::new(name);
-		client.connect(connector);
+		client.connect(connector).await?;
 		let inner = ContextParts::new(addr);
-		let ctx = ButtplugContext { inner, client };
+		let mut ctx = ButtplugContext { inner, client };
+		ctx.add_stream(ctx.client.event_stream());
 		let fut = ContextFut::new(ctx, act, mailbox);
 		let addr = fut.address();
 		actix_rt::spawn(fut);
-		addr
+		Ok(addr)
 	}
 
 	/// Start a buttplug actor using the actix websocket transport.
 	#[cfg(feature = "actix-ws-transport")]
-	pub fn start_with_actix_ws_transport<S>(
+	pub async fn start_with_actix_ws_transport<S>(
 		actor: A,
 		name: &str,
 		req: &actix_web::HttpRequest,
 		stream: S,
-	) -> Result<(Addr<A>, HttpResponse), actix_web::error::Error>
+	) -> Result<(Addr<A>, HttpResponse)>
 	where
 		A: Actor<Context = ButtplugContext<A>>,
 		S: Stream<Item = Result<Bytes, PayloadError>> + 'static,
 	{
-		use buttplug::{
-			connector::ButtplugRemoteConnector,
-			core::messages::serializer::ButtplugClientJSONSerializer,
-		};
-		use transport::ButtplugActixWebsocketTransport;
-
 		let (trans, res) = ButtplugActixWebsocketTransport::new(req, stream)?;
 
 		let conn: ButtplugRemoteConnector<
@@ -133,7 +137,7 @@ where
 			_,
 		> = ButtplugRemoteConnector::new(trans);
 
-		let addr = Self::start_with_connector(actor, name, conn);
+		let addr = Self::start_with_connector(actor, name, conn).await?;
 
 		Ok((addr, res))
 	}
