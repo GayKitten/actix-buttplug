@@ -8,14 +8,14 @@ readme = "README.md"
 repository = "https://github.com/GayKitten/actix-buttplug"
 homepage = "https://github.com/GayKitten/actix-buttplug"
 keywords = ["actix", "buttplug", "buttplug.io", "websockets"]
-category = ["api-bindings", "asynchronous", "concurrency", "web-programming::websocket"]
+categories = ["api-bindings", "asynchronous", "concurrency", "web-programming::websocket"]
 license = "GPL-3.0-or-later"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["actix-ws-transport"]
-actix-ws-transport = ["dep:actix-web-actors", "dep:actix-web", "dep:tokio", "dep:tokio-scoped"]
+default = ["actix-web"]
+actix-web = ["dep:actix-web-actors", "dep:actix-web", "dep:tokio", "dep:tokio-scoped"]
 
 [dependencies]
 actix = "0.13.0"
