@@ -31,6 +31,8 @@ use buttplug::{
 };
 use transport::ButtplugActixWebsocketTransport;
 
+use log::{trace, warn};
+
 /// Execution context for buttplug.io actors.
 pub struct ButtplugContext<A>
 where
@@ -85,10 +87,8 @@ where
 	}
 }
 
-use actix_web::error::PayloadError;
-use actix_web::web::Bytes;
 use actix_web::HttpResponse;
-use futures::{future::BoxFuture, Stream};
+use futures::future::BoxFuture;
 
 impl<A> ButtplugContext<A>
 where
@@ -139,23 +139,22 @@ where
 	/// }
 	/// ```
 	#[cfg(feature = "actix-web")]
-	pub async fn start_with_actix_ws_transport<S, F, R>(
+	pub async fn start_with_actix_ws_transport<F, R>(
 		actor: A,
 		name: impl AsRef<str> + 'static + Send,
 		req: &actix_web::HttpRequest,
-		stream: S,
+		stream: actix_web::web::Payload,
 		on_connection: F,
 	) -> Result<HttpResponse>
 	where
 		A: Actor<Context = ButtplugContext<A>> + Send,
-		S: Stream<Item = Result<Bytes, PayloadError>> + 'static,
 		F: FnOnce(Result<Addr<A>, ButtplugClientError>) -> R + 'static + Send,
 		R: Future<Output = ()> + 'static + Send,
 	{
 		let (trans, res) = ButtplugActixWebsocketTransport::new(req, stream)?;
 
 		tokio::task::spawn(async move {
-			println!("Starting actor with transport inside new task");
+			trace!("Starting actor with transport inside new task");
 			let conn: ButtplugRemoteConnector<
 				ButtplugActixWebsocketTransport,
 				ButtplugClientJSONSerializer,
@@ -164,9 +163,8 @@ where
 			> = ButtplugRemoteConnector::new(trans);
 			let name = name.as_ref();
 			let addr = Self::start_with_connector(actor, name, conn).await;
-			println!("Actor started, calling on_connection callback");
+			trace!("Actor started, calling on_connection callback");
 			on_connection(addr).await;
-			println!("on_connection callback finished");
 		});
 
 		Ok(res)
