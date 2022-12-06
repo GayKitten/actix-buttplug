@@ -15,7 +15,7 @@ license = "GPL-3.0-or-later"
 
 [features]
 default = ["actix-web"]
-actix-web = ["dep:actix-web-actors", "dep:actix-web", "dep:tokio", "dep:tokio-scoped"]
+actix-web = ["dep:actix-web-actors", "dep:actix-web", "dep:tokio"]
 
 [dependencies]
 actix = "0.13.0"
@@ -31,4 +31,3 @@ actix-web-actors = { version = "4.1.0", optional = true }
 actix-web = { version = "4.1.0", optional = true }
 # use same version as buttplug
 tokio = { version = "1.17.0", optional = true }
-tokio-scoped = { version = "0.2.0", optional = true }

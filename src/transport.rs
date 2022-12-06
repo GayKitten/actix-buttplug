@@ -1,4 +1,6 @@
-use actix::{Actor, ActorContext, Addr, Handler, Message, StreamHandler};
+use actix::{
+	Actor, ActorContext, Addr, ContextFutureSpawner, Handler, Message, StreamHandler, WrapFuture,
+};
 use actix_web::{error::PayloadError, web::Bytes, HttpRequest, HttpResponse};
 use actix_web_actors::ws::{
 	CloseCode, Message as WsMessage, ProtocolError, WebsocketContext, WsResponseBuilder,
@@ -13,7 +15,7 @@ use buttplug::{
 use futures::{future::BoxFuture, Stream};
 use tokio::sync::mpsc::{Receiver, Sender};
 
-use log::{error, trace};
+use log::{error, info, trace};
 
 /// A transport connector similar to [buttplug::ButtplugWebsocketClientTransport]
 pub struct ButtplugActixWebsocketTransport {
@@ -46,8 +48,10 @@ impl ButtplugConnectorTransport for ButtplugActixWebsocketTransport {
 		self.inner_addr.do_send(SendTx(incoming_sender));
 		let inner_addr = self.inner_addr.clone();
 		Box::pin(async move {
+			info!("Starting outgoing loop");
 			loop {
 				if let Some(out_msg) = outgoing_receiver.recv().await {
+					info!("Sending message: {:?}", out_msg);
 					inner_addr
 						.send(SendOut(out_msg))
 						.await
@@ -97,33 +101,31 @@ impl StreamHandler<Result<WsMessage, ProtocolError>> for InnerWsTransporterActor
 			return;
 		}
 
-		if let Some(in_tx) = &self.in_tx {
+		if let Some(in_tx) = self.in_tx.as_ref().map(|x| x.clone()) {
 			match incoming {
 				Ok(WsMessage::Text(text)) => {
-					trace!("Received text: {}", text);
+					info!("Received text: {}", text);
 					let msg = ButtplugSerializedMessage::Text(text.to_string());
-					let future = async {
+					async move {
 						in_tx
 							.send(ButtplugTransportIncomingMessage::Message(msg))
 							.await
 							.expect("Failed to send incoming message");
-					};
-					tokio_scoped::scope(|scope| {
-						scope.spawn(future);
-					});
+					}
+					.into_actor(self)
+					.spawn(ctx);
 				}
 				Ok(WsMessage::Binary(bin)) => {
-					trace!("Received binary data: {:?}", bin);
+					info!("Received binary data: {:?}", bin);
 					let msg = ButtplugSerializedMessage::Binary(bin.to_vec());
-					let fut = async {
+					async move {
 						in_tx
 							.send(ButtplugTransportIncomingMessage::Message(msg))
 							.await
 							.expect("Failed to send incoming message");
-					};
-					tokio_scoped::scope(|scope| {
-						scope.spawn(fut);
-					});
+					}
+					.into_actor(self)
+					.spawn(ctx);
 				}
 				_ => (),
 			}
@@ -154,11 +156,11 @@ impl Handler<SendOut> for InnerWsTransporterActor {
 	fn handle(&mut self, SendOut(msg): SendOut, ctx: &mut Self::Context) -> Self::Result {
 		match msg {
 			ButtplugSerializedMessage::Text(text) => {
-				trace!("Sending text: {}", text);
+				info!("Sending text: {}", text);
 				ctx.text(text);
 			}
 			ButtplugSerializedMessage::Binary(bin) => {
-				trace!("Sending binary data: {:?}", bin);
+				info!("Sending binary data: {:?}", bin);
 				ctx.binary(bin);
 			}
 		}

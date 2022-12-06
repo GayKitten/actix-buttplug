@@ -14,7 +14,7 @@ pub mod transport;
 use std::{future::Future, sync::Arc};
 
 use delegate::delegate;
-use error::Result;
+pub use error::Result;
 
 use actix::{
 	dev::{AsyncContextParts, ContextFut, ContextParts, Mailbox},
@@ -108,7 +108,9 @@ where
 		let mailbox = Mailbox::default();
 		let addr = mailbox.sender_producer();
 		let client = ButtplugClient::new(name);
+		println!("Connecting to connector");
 		client.connect(connector).await?;
+		println!("Connected to connector");
 		let inner = ContextParts::new(addr);
 		let mut ctx = ButtplugContext { inner, client };
 		ctx.add_stream(ctx.client.event_stream());
@@ -126,7 +128,7 @@ where
 	///     req: HttpRequest,
 	///     stream: web::Payload,
 	/// ) -> Result<HttpResponse, Error> {
-	///     let (addr, res) = ButtplugContext::start_with_actix_ws_transport(
+	///     let res = ButtplugContext::start_with_actix_ws_transport(
 	///         MyOwnActor::default(),
 	///         "My Buttplug Actor",
 	///         req,
@@ -153,6 +155,7 @@ where
 		let (trans, res) = ButtplugActixWebsocketTransport::new(req, stream)?;
 
 		tokio::task::spawn(async move {
+			println!("Starting actor with transport inside new task");
 			let conn: ButtplugRemoteConnector<
 				ButtplugActixWebsocketTransport,
 				ButtplugClientJSONSerializer,
@@ -161,7 +164,9 @@ where
 			> = ButtplugRemoteConnector::new(trans);
 			let name = name.as_ref();
 			let addr = Self::start_with_connector(actor, name, conn).await;
-			on_connection(addr).await
+			println!("Actor started, calling on_connection callback");
+			on_connection(addr).await;
+			println!("on_connection callback finished");
 		});
 
 		Ok(res)
