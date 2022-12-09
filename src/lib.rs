@@ -153,7 +153,7 @@ where
 	{
 		let (trans, res) = ButtplugActixWebsocketTransport::new(req, stream)?;
 
-		tokio::task::spawn(async move {
+		actix_web::rt::spawn(async move {
 			trace!("Starting actor with transport inside new task");
 			let conn: ButtplugRemoteConnector<
 				ButtplugActixWebsocketTransport,
@@ -191,6 +191,8 @@ where
 			pub fn stop_scanning(&self) -> BoxFuture<'static, Result<(), ButtplugClientError>>;
 			/// This call delegates to [ButtplugClient::ping].
 			pub fn ping(&self) -> BoxFuture<'static, Result<(), ButtplugClientError>>;
+			/// This call delegates to [ButtplugClient::stop_all_devices].
+			pub fn stop_all_devices(&self) -> BoxFuture<'static, Result<(), ButtplugClientError>>;
 		}
 	}
 }
