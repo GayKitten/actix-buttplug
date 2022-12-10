@@ -17,8 +17,8 @@ use delegate::delegate;
 pub use error::Result;
 
 use actix::{
-	dev::{AsyncContextParts, ContextFut, ContextParts, Mailbox},
-	Actor, ActorContext, ActorState, Addr, AsyncContext, StreamHandler,
+	dev::{AsyncContextParts, ContextFut, ContextParts, Mailbox, ToEnvelope, Envelope},
+	Actor, ActorContext, ActorState, Addr, AsyncContext, StreamHandler, Handler, Message,
 };
 use buttplug::{
 	client::{ButtplugClient, ButtplugClientDevice, ButtplugClientError, ButtplugClientEvent},
@@ -84,6 +84,17 @@ where
 {
 	fn parts(&mut self) -> &mut ContextParts<A> {
 		&mut self.inner
+	}
+}
+
+impl<A, M> ToEnvelope<A, M> for ButtplugContext<A>
+where
+	A: Actor<Context = Self> + Handler<M>,
+	M: Message + Send + 'static,
+	M::Result: Send,
+{
+	fn pack(msg: M, tx: Option<actix::dev::OneshotSender<<M as Message>::Result>>) -> Envelope<A> {
+		Envelope::new(msg, tx)
 	}
 }
 
