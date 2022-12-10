@@ -17,18 +17,20 @@ use delegate::delegate;
 pub use error::Result;
 
 use actix::{
-	dev::{AsyncContextParts, ContextFut, ContextParts, Mailbox, ToEnvelope, Envelope},
-	Actor, ActorContext, ActorState, Addr, AsyncContext, StreamHandler, Handler, Message,
+	dev::{AsyncContextParts, ContextFut, ContextParts, Envelope, Mailbox, ToEnvelope},
+	Actor, ActorContext, ActorState, Addr, AsyncContext, Handler, Message, StreamHandler,
 };
 use buttplug::{
 	client::{ButtplugClient, ButtplugClientDevice, ButtplugClientError, ButtplugClientEvent},
-	connector::ButtplugConnector,
-	core::messages::{ButtplugCurrentSpecClientMessage, ButtplugCurrentSpecServerMessage},
+	core::{
+		connector::{ButtplugConnector, ButtplugRemoteConnector},
+		message::{
+			serializer::ButtplugClientJSONSerializer, ButtplugCurrentSpecClientMessage,
+			ButtplugCurrentSpecServerMessage,
+		},
+	},
 };
 
-use buttplug::{
-	connector::ButtplugRemoteConnector, core::messages::serializer::ButtplugClientJSONSerializer,
-};
 use transport::ButtplugActixWebsocketTransport;
 
 use log::{trace, warn};

@@ -20,7 +20,7 @@ actix-web = ["dep:actix-ws", "dep:actix-web", "dep:tokio"]
 [dependencies]
 actix = "0.13.0"
 actix-rt = "2.7.0"
-buttplug = "5.1.10"
+buttplug = "6.2"
 delegate = "0.7.0"
 futures = "0.3.21"
 log = "0.4.17"

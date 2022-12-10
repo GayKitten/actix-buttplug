@@ -2,12 +2,12 @@ use std::sync::{Arc, Mutex};
 
 use actix_web::{HttpRequest, HttpResponse};
 use actix_ws::Message;
-use buttplug::{
+use buttplug::core::{
 	connector::{
 		transport::{ButtplugConnectorTransport, ButtplugTransportIncomingMessage},
 		ButtplugConnectorError,
 	},
-	core::messages::serializer::ButtplugSerializedMessage,
+	message::serializer::ButtplugSerializedMessage,
 };
 use futures::{future::BoxFuture, FutureExt};
 use tokio::{
@@ -145,7 +145,7 @@ impl ButtplugConnectorTransport for ButtplugActixWebsocketTransport {
 		})
 	}
 
-	fn disconnect(self) -> buttplug::connector::ButtplugConnectorResultFuture {
+	fn disconnect(self) -> buttplug::core::connector::ButtplugConnectorResultFuture {
 		Box::pin(async move {
 			self.notify.notify_one();
 			Ok(())
